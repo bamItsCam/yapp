@@ -1,0 +1,124 @@
+package components
+
+import (
+	"fmt"
+	"yapp/db"
+	"yapp/types"
+)
+
+
+
+templ UsernameForm() {
+    <form hx-post={ fmt.Sprintf("/%s/user", ctx.Value("room").(string)) } hx-target="#username">
+        <label class="label">Name</label>
+        <div class="field has-addons">
+            <div class="control">
+                <input id="username_input" type="text" name="username" placeholder="enter your name to vote" class="input"/>
+            </div>
+            <div class="control">
+                <input type="submit" class="button is-primary" value="Submit"/>
+            </div>
+        </div>
+    </form>
+}
+
+templ UsernameDisplay(username string) {
+    <h2 class="title is-4">Hello { username }, cast your vote</h2>
+}
+
+
+templ Pointer(selectedPoint string) {
+    <form id="pointer" class="field buttons" hx-post={ fmt.Sprintf("/%s/point", ctx.Value("room").(string)) } hx-target="#pointer"  hx-swap="outerHTML">
+    for _, point := range types.PossiblePoints {
+        <input type="submit" name="point" value={ point }
+        if point == selectedPoint {
+            class="button is-dark is-selected" disabled style="cursor:pointer"
+        } else {
+            class="button is-light"
+        }
+        />
+    }
+    </form>
+}
+
+templ RoomVotes(room db.Room) {
+    <div class="is-flex ">
+        <div class="buttons field has-addons mx-2">
+            <button hx-post={ fmt.Sprintf("/%s/show", ctx.Value("room").(string)) }
+            if room.VotesVisible {
+                class="button is-rounded is-info"
+                is-selected style="cursor:pointer; pointer-events: none"
+            } else {
+                class="button is-rounded is-info is-light"
+            }>Show</button>
+            <button hx-post={ fmt.Sprintf("/%s/hide", ctx.Value("room").(string)) }
+            if room.VotesVisible {
+                class="button is-rounded is-info is-light"
+            } else {
+                class="button is-rounded is-info"
+                is-selected style="cursor:pointer; pointer-events: none"
+            }>Hide</button>
+        </div>
+        <div class="field mx-2">
+            <button class="button is-warning is-rounded"
+            if room.SessionUserMap == nil {
+                disabled style="cursor:pointer"
+            }>Clear</button>
+        </div>
+    </div>
+
+    <table class="table is-striped is-hoverable">
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Vote</th>
+                <th>SessionId</th>
+            </tr>
+        </thead>
+        <tbody>
+    for sessId, user := range room.SessionUserMap {
+            <tr>
+                <td>{ user.Name }</td>
+                if room.VotesVisible {
+                <td>{user.Vote }</td>
+                } else if user.Vote != "" {
+                <td>XX</td>
+                } else {
+                <td></td>
+                }
+                <td>{ string(sessId) }</td>
+            </tr>
+    }
+        </tbody>
+    </table>
+}
+
+templ Room(selectedPoint string, room db.Room) {
+    <!DOCTYPE html>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"/>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <!--<script src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>-->
+    <html>
+        <head>
+            <title>Pointing Room { ctx.Value("room").(string) }</title>
+        </head>
+        <body>
+
+            <div class="columns is-centered">
+                <div class="column is-offset-one-quarter is-half">
+                    <h1 class="title is-3 m-2">Pointing Room { ctx.Value("room").(string) }</h1>
+                    <div class="m-3" id="username">
+                        @UsernameForm()
+                    </div>
+                    <!--@Pointer(possiblePoints, selectedPoint)-->
+                    <div class="m-3" hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap="message">
+                        @RoomVotes(room)
+                        init
+                    </div>
+                </div>
+            </div>
+        </body>
+    </html>
+}
+
