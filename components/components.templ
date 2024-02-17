@@ -10,10 +10,9 @@ import (
 
 templ UsernameForm() {
     <form hx-post={ fmt.Sprintf("/%s/user", ctx.Value("room").(string)) } hx-target="#username">
-        <label class="label">Name</label>
-        <div class="field has-addons">
+        <div class="field has-addons has-addons-centered">
             <div class="control">
-                <input id="username_input" type="text" name="username" placeholder="enter your name to vote" class="input"/>
+                <input type="text" name="username" placeholder="enter your name to vote" class="input"/>
             </div>
             <div class="control">
                 <input type="submit" class="button is-primary" value="Submit"/>
@@ -23,60 +22,62 @@ templ UsernameForm() {
 }
 
 templ UsernameDisplay(username string) {
-    <h2 class="title is-4">Hello { username }, cast your vote</h2>
+    <h2 class="title is-4 has-text-centered">Hello { username }, cast your vote</h2>
 }
 
 
-templ Pointer(selectedPoint string) {
-    <form id="pointer" class="field buttons" hx-post={ fmt.Sprintf("/%s/point", ctx.Value("room").(string)) } hx-target="#pointer"  hx-swap="outerHTML">
-    for _, point := range types.PossiblePoints {
-        <input type="submit" name="point" value={ point }
-        if point == selectedPoint {
-            class="button is-dark is-selected" disabled style="cursor:pointer"
-        } else {
-            class="button is-light"
+templ VoteForm(currentVote string) {
+    <form id="vote-form"  hx-post={ fmt.Sprintf("/%s/vote", ctx.Value("room").(string)) } hx-target="#vote-form"  hx-swap="outerHTML">
+        <div class="field buttons is-grouped is-grouped-centered mx-auto" style="max-width: 26em">
+        for _, vote := range types.PossibleVotes {
+            <input type="submit" name="vote" value={ vote } style="min-width: 4em"
+            if vote == currentVote {
+                class="button is-dark is-selected mx-1"
+            } else {
+                class="button is-light mx-1"
+            }
+            />
         }
-        />
-    }
+        </div>
     </form>
 }
 
 templ RoomVotes(room db.Room) {
-    <div class="is-flex ">
-        <div class="buttons field has-addons mx-2">
+    <div class="field is-grouped is-grouped-centered">
+        <div class="buttons field has-addons">
             <button hx-post={ fmt.Sprintf("/%s/show", ctx.Value("room").(string)) }
             if room.VotesVisible {
                 class="button is-rounded is-info"
-                is-selected style="cursor:pointer; pointer-events: none"
+                is-selected style="pointer-events: none; min-width: 5em"
             } else {
-                class="button is-rounded is-info is-light"
+                class="button is-rounded is-info is-light" style="min-width: 5em"
             }>Show</button>
             <button hx-post={ fmt.Sprintf("/%s/hide", ctx.Value("room").(string)) }
             if room.VotesVisible {
-                class="button is-rounded is-info is-light"
+                class="button is-rounded is-info is-light" style="min-width: 5em"
             } else {
                 class="button is-rounded is-info"
-                is-selected style="cursor:pointer; pointer-events: none"
+                is-selected style="pointer-events: none; min-width: 5em"
             }>Hide</button>
         </div>
-        <div class="field mx-2">
-            <button class="button is-warning is-rounded"
+        <div class="field ml-4">
+            <button hx-post={ fmt.Sprintf("/%s/clear", ctx.Value("room").(string)) } class="button is-warning is-rounded"
             if room.SessionUserMap == nil {
                 disabled style="cursor:pointer"
             }>Clear</button>
         </div>
     </div>
 
-    <table class="table is-striped is-hoverable">
+    <table class="table is-striped is-hoverable mx-auto">
         <thead>
             <tr>
-                <th>User</th>
+                <th style="min-width: 16em">User</th>
                 <th>Vote</th>
-                <th>SessionId</th>
+                <!--<th>SessionId</th>-->
             </tr>
         </thead>
         <tbody>
-    for sessId, user := range room.SessionUserMap {
+    for _, user := range room.SessionUserMap {
             <tr>
                 <td>{ user.Name }</td>
                 if room.VotesVisible {
@@ -86,18 +87,22 @@ templ RoomVotes(room db.Room) {
                 } else {
                 <td></td>
                 }
-                <td>{ string(sessId) }</td>
+                <!--<td>{ string(sessId) }</td>-->
             </tr>
     }
         </tbody>
     </table>
 }
 
-templ Room(selectedPoint string, room db.Room) {
+
+
+templ Room(currentVote string, room db.Room) {
     <!DOCTYPE html>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"/>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <link href=" https://cdn.jsdelivr.net/npm/@creativebulma/bulma-divider@1.1.0/dist/bulma-divider.min.css" rel="stylesheet"/>
+
     <!--<script src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>-->
     <html>
         <head>
@@ -105,20 +110,47 @@ templ Room(selectedPoint string, room db.Room) {
         </head>
         <body>
 
-            <div class="columns is-centered">
-                <div class="column is-offset-one-quarter is-half">
-                    <h1 class="title is-3 m-2">Pointing Room { ctx.Value("room").(string) }</h1>
-                    <div class="m-3" id="username">
-                        @UsernameForm()
-                    </div>
-                    <!--@Pointer(possiblePoints, selectedPoint)-->
-                    <div class="m-3" hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap="message">
-                        @RoomVotes(room)
-                        init
-                    </div>
+            <div class="container">
+
+                <h1 class="title is-3 has-text-centered my-2">Pointing Room { ctx.Value("room").(string) }</h1>
+                <div class="mx-auto py-3" id="username">
+                    @UsernameForm()
+                </div>
+                <!--@Pointer(possiblePoints, selectedPoint)-->
+                <div class="mx-auto py-3" hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap="message">
+                    @RoomVotes(room)
+                    init
                 </div>
             </div>
         </body>
     </html>
 }
 
+templ Index() {
+    <!DOCTYPE html>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"/>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <link href=" https://cdn.jsdelivr.net/npm/@creativebulma/bulma-divider@1.1.0/dist/bulma-divider.min.css" rel="stylesheet"/>
+    <!--<script src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>-->
+    <html>
+        <head>
+            <title>Yet Another Pointing Poker</title>
+        </head>
+        <body>
+            <div class="container">
+                <h1 class="title is-3 has-text-centered my-2">Yet Another Pointing Poker</h1>
+                <form class="mx-auto py-3" hx-post="/">
+                    <div class="field has-addons has-addons-centered">
+                        <div class="control">
+                            <input type="text" name="room" placeholder="enter a room id" class="input"/>
+                        </div>
+                        <div class="control">
+                            <input type="submit" class="button is-primary" value="Join"/>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </body>
+    </html>
+}

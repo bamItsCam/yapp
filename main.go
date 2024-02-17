@@ -6,7 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
-	sse "github.com/r3labs/sse/v2"
+	"github.com/r3labs/sse/v2"
 	"log"
 	"net/http"
 	"yapp/components"
@@ -19,6 +19,8 @@ var eventServer *sse.Server
 
 func init() {
 	eventServer = sse.New()
+	eventServer.AutoStream = true
+	eventServer.AutoReplay = false
 }
 
 func main() {
@@ -53,44 +55,71 @@ func main() {
 				next.ServeHTTP(w, r)
 			})
 		})
-		html.Post("/{room:[0-9]+}/point", setPoint)
+		html.Get("/", indexPage)
+		html.Post("/", indexRedirect)
+
+		html.Post("/{room:[0-9]+}/vote", setVote)
 		html.Post("/{room:[0-9]+}/user", setUser)
 		html.Post("/{room:[0-9]+}/show", showVotes)
 		html.Post("/{room:[0-9]+}/hide", hideVotes)
-		html.Post("/{room:[0-9]+}/hide", clearVotes)
+		html.Post("/{room:[0-9]+}/clear", clearVotes)
 
-		html.Get("/{room:[0-9]+}", pageRoom)
+		html.Get("/{room:[0-9]+}", roomPage)
 	})
 
 	http.ListenAndServe(":3000", mux)
 }
 
-func pageRoom(w http.ResponseWriter, r *http.Request) {
+func indexRedirect(w http.ResponseWriter, r *http.Request) {
+	var redirectRoom string
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	} else if rooms := r.Form["room"]; len(rooms) == 1 {
+		redirectRoom = rooms[0]
+	} //todo validation
+	w.Header().Set("HX-Redirect", redirectRoom)
+	//http.Redirect(w, r, redirectRoom, http.StatusFound)
+}
+
+func indexPage(w http.ResponseWriter, r *http.Request) {
+	// create/join room button?
+	// list of existing rooms they're a member of?
+	if err := components.Index().Render(r.Context(), w); err != nil {
+		log.Println(err)
+	}
+}
+
+func roomPage(w http.ResponseWriter, r *http.Request) {
 	room := chi.URLParam(r, "room")
-	eventServer.CreateStream(room)
 	ctx := context.WithValue(r.Context(), "room", room)
 	if err := components.Room(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r))), db.VoteStore.GetRoom(db.RoomId(room))).Render(ctx, w); err != nil {
 		log.Println(err)
 	}
 }
 
-func setPoint(w http.ResponseWriter, r *http.Request) {
-	var point string
+func setVote(w http.ResponseWriter, r *http.Request) {
+	var vote string
 	room := chi.URLParam(r, "room")
 	ctx := context.WithValue(r.Context(), "room", room)
 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	} else if points := r.Form["point"]; len(points) == 1 {
-		point = points[0]
+	} else if votes := r.Form["vote"]; len(votes) == 1 {
+		vote = votes[0]
 	} // todo validation
 
-	db.VoteStore.SetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r)), point)
+	if curVote := db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r))); curVote == vote {
+		// unset the vote if we received the currently set value
+		vote = ""
+	}
+
+	db.VoteStore.SetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r)), vote)
 
 	publishVoteTableUpdateMsg(ctx, db.RoomId(room))
 
-	if err := components.Pointer(point).Render(ctx, w); err != nil {
+	if err := components.VoteForm(vote).Render(ctx, w); err != nil {
 		log.Println(err)
 	}
 }
@@ -98,6 +127,7 @@ func setPoint(w http.ResponseWriter, r *http.Request) {
 func setUser(w http.ResponseWriter, r *http.Request) {
 	var username string
 	room := chi.URLParam(r, "room")
+	ctx := context.WithValue(r.Context(), "room", room)
 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -107,13 +137,12 @@ func setUser(w http.ResponseWriter, r *http.Request) {
 	} //todo validation
 
 	db.VoteStore.SetUsernameBySession(db.RoomId(room), db.SessionId(getSessionId(r)), username)
-	// todo should clear user's prior vote?
-	ctx := context.WithValue(r.Context(), "room", room)
+
+	publishVoteTableUpdateMsg(ctx, db.RoomId(room))
+
 	if err := components.UsernameDisplay(username).Render(ctx, w); err != nil {
 		log.Println(err)
-	}
-	// todo setting name should also send sse to update point table
-	if err := components.Pointer(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r)))).Render(ctx, w); err != nil {
+	} else if err := components.VoteForm(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r)))).Render(ctx, w); err != nil {
 		log.Println(err)
 	}
 }
@@ -122,7 +151,7 @@ func showVotes(w http.ResponseWriter, r *http.Request) {
 	room := chi.URLParam(r, "room")
 	ctx := context.WithValue(r.Context(), "room", room)
 
-	db.VoteStore.SetVoteVisibility(db.RoomId(room), true)
+	db.VoteStore.SetRoomVoteVisibility(db.RoomId(room), true)
 	publishVoteTableUpdateMsg(ctx, db.RoomId(room))
 }
 
@@ -130,7 +159,7 @@ func hideVotes(w http.ResponseWriter, r *http.Request) {
 	room := chi.URLParam(r, "room")
 	ctx := context.WithValue(r.Context(), "room", room)
 
-	db.VoteStore.SetVoteVisibility(db.RoomId(room), false)
+	db.VoteStore.SetRoomVoteVisibility(db.RoomId(room), false)
 	publishVoteTableUpdateMsg(ctx, db.RoomId(room))
 }
 
@@ -138,7 +167,7 @@ func clearVotes(w http.ResponseWriter, r *http.Request) {
 	room := chi.URLParam(r, "room")
 	ctx := context.WithValue(r.Context(), "room", room)
 
-	db.VoteStore.SetVoteVisibility(db.RoomId(room), false)
+	db.VoteStore.ClearRoomVotes(db.RoomId(room))
 	publishVoteTableUpdateMsg(ctx, db.RoomId(room))
 }
 

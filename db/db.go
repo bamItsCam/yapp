@@ -43,15 +43,34 @@ func (db voteDB) GetVoteBySession(room RoomId, sessId SessionId) string {
 	}
 }
 
-func (db voteDB) SetVoteVisibility(room RoomId, show bool) {
+func (db voteDB) ClearRoomVotes(room RoomId) {
+	if db == nil {
+		return
+	}
+	if _, exists := db[room]; !exists {
+		return
+	}
+	sessVotes := db[room].SessionUserMap
+	for sessId, _ := range sessVotes {
+		s := sessVotes[sessId]
+		s.Vote = ""
+		sessVotes[sessId] = s
+	}
+	r := db[room]
+	r.SessionUserMap = sessVotes
+	db[room] = r
+}
+
+func (db voteDB) SetRoomVoteVisibility(room RoomId, show bool) {
 	if db == nil {
 		db = make(voteDB)
 	}
 	if _, exists := db[room]; !exists {
 		db[room] = Room{
-			VotesVisible:   true,
+			VotesVisible:   show,
 			SessionUserMap: make(map[SessionId]User),
 		}
+		return
 	}
 	r := db[room]
 	r.VotesVisible = show
