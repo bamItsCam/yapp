@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"yapp/components"
 	"yapp/db"
+	"yapp/types"
 )
 
 var sessionCookie = "sess_id"
@@ -22,6 +23,13 @@ func init() {
 	eventServer.AutoStream = true
 	eventServer.AutoReplay = false
 }
+
+// TODO:
+// * redesign the "db"
+// * use a lock on the "db"
+// * show list of recently used rooms to a user/session
+// * vote and name validation
+// * add a create room button that selects an unused roomId
 
 func main() {
 	mux := chi.NewRouter()
@@ -93,7 +101,7 @@ func indexPage(w http.ResponseWriter, r *http.Request) {
 func roomPage(w http.ResponseWriter, r *http.Request) {
 	room := chi.URLParam(r, "room")
 	ctx := context.WithValue(r.Context(), "room", room)
-	if err := components.Room(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r))), db.VoteStore.GetRoom(db.RoomId(room))).Render(ctx, w); err != nil {
+	if err := components.Room(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r))), db.VoteStore.GetRoom(db.RoomId(room), true)).Render(ctx, w); err != nil {
 		log.Println(err)
 	}
 }
@@ -142,7 +150,7 @@ func setUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := components.UsernameDisplay(username).Render(ctx, w); err != nil {
 		log.Println(err)
-	} else if err := components.VoteForm(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r)))).Render(ctx, w); err != nil {
+	} else if err := components.VoteFormSSE(db.VoteStore.GetVoteBySession(db.RoomId(room), db.SessionId(getSessionId(r)))).Render(ctx, w); err != nil {
 		log.Println(err)
 	}
 }
@@ -169,6 +177,7 @@ func clearVotes(w http.ResponseWriter, r *http.Request) {
 
 	db.VoteStore.ClearRoomVotes(db.RoomId(room))
 	publishVoteTableUpdateMsg(ctx, db.RoomId(room))
+	publishVoteFormClearMsg(ctx, db.RoomId(room))
 }
 
 func getSessionId(r *http.Request) (id string) {
@@ -181,10 +190,22 @@ func getSessionId(r *http.Request) (id string) {
 
 func publishVoteTableUpdateMsg(ctx context.Context, room db.RoomId) {
 	buf := new(bytes.Buffer)
-	if err := components.RoomVotes(db.VoteStore.GetRoom(room)).Render(ctx, buf); err != nil {
+	if err := components.RoomVotes(db.VoteStore.GetRoom(room, false)).Render(ctx, buf); err != nil {
 		log.Println(err)
 	}
 	eventServer.Publish(string(room), &sse.Event{
-		Data: buf.Bytes(),
+		Event: types.SSETypeRoomUpdate,
+		Data:  buf.Bytes(),
+	})
+}
+
+func publishVoteFormClearMsg(ctx context.Context, room db.RoomId) {
+	buf := new(bytes.Buffer)
+	if err := components.VoteForm("").Render(ctx, buf); err != nil {
+		log.Println(err)
+	}
+	eventServer.Publish(string(room), &sse.Event{
+		Event: types.SSETypeClear,
+		Data:  buf.Bytes(),
 	})
 }

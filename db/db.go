@@ -1,11 +1,14 @@
 package db
 
+import "time"
+
 // TODO lock this shit down
 type voteDB map[RoomId]Room
 
 type Room struct {
 	VotesVisible bool
 	SessionUserMap
+	lastUpdated time.Time
 }
 
 type SessionUserMap map[SessionId]User
@@ -24,13 +27,22 @@ func init() {
 	VoteStore = make(voteDB)
 }
 
-func (db voteDB) GetRoom(room RoomId) Room {
+func (db voteDB) GetRoom(room RoomId, checkStale bool) Room {
+	// this kinda sucks, I need a cleaner way to do nil/empty checks for this. But the bigger problem is using this nested map I guess
 	if db == nil {
 		return Room{}
-	} else if _, exists := db[room]; !exists {
+	} else if r, exists := db[room]; !exists {
 		return Room{}
+	} else {
+		cutoff := time.Now().Add(-24 * time.Hour)
+		if r.lastUpdated.Before(cutoff) {
+			db[room] = Room{}
+		}
 	}
-	return db[room]
+	r := db[room]
+	r.lastUpdated = time.Now()
+	db[room] = r
+	return r
 }
 
 func (db voteDB) GetVoteBySession(room RoomId, sessId SessionId) string {
@@ -69,6 +81,7 @@ func (db voteDB) SetRoomVoteVisibility(room RoomId, show bool) {
 		db[room] = Room{
 			VotesVisible:   show,
 			SessionUserMap: make(map[SessionId]User),
+			lastUpdated:    time.Now(),
 		}
 		return
 	}
@@ -85,6 +98,7 @@ func (db voteDB) SetVoteBySession(room RoomId, sessId SessionId, vote string) {
 		db[room] = Room{
 			VotesVisible:   false,
 			SessionUserMap: make(map[SessionId]User),
+			lastUpdated:    time.Now(),
 		}
 	}
 	user := db[room].SessionUserMap[sessId]
@@ -102,6 +116,7 @@ func (db voteDB) SetUsernameBySession(room RoomId, sessId SessionId, name string
 		db[room] = Room{
 			VotesVisible:   false,
 			SessionUserMap: make(map[SessionId]User),
+			lastUpdated:    time.Now(),
 		}
 	}
 	user := db[room].SessionUserMap[sessId]

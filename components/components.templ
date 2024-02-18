@@ -25,9 +25,14 @@ templ UsernameDisplay(username string) {
     <h2 class="title is-4 has-text-centered">Hello { username }, cast your vote</h2>
 }
 
+templ VoteFormSSE(currentVote string) {
+    <div hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap={ string(types.SSETypeClear) }>
+        @VoteForm(currentVote)
+    </div>
+}
 
 templ VoteForm(currentVote string) {
-    <form id="vote-form"  hx-post={ fmt.Sprintf("/%s/vote", ctx.Value("room").(string)) } hx-target="#vote-form"  hx-swap="outerHTML">
+    <form id="vote-form" hx-post={ fmt.Sprintf("/%s/vote", ctx.Value("room").(string)) } hx-target="#vote-form"  hx-swap="outerHTML">
         <div class="field buttons is-grouped is-grouped-centered mx-auto" style="max-width: 26em">
         for _, vote := range types.PossibleVotes {
             <input type="submit" name="vote" value={ vote } style="min-width: 4em"
@@ -61,10 +66,7 @@ templ RoomVotes(room db.Room) {
             }>Hide</button>
         </div>
         <div class="field ml-4">
-            <button hx-post={ fmt.Sprintf("/%s/clear", ctx.Value("room").(string)) } class="button is-warning is-rounded"
-            if room.SessionUserMap == nil {
-                disabled style="cursor:pointer"
-            }>Clear</button>
+            <button hx-post={ fmt.Sprintf("/%s/clear", ctx.Value("room").(string)) } class="button is-warning is-rounded">Clear</button>
         </div>
     </div>
 
@@ -116,8 +118,7 @@ templ Room(currentVote string, room db.Room) {
                 <div class="mx-auto py-3" id="username">
                     @UsernameForm()
                 </div>
-                <!--@Pointer(possiblePoints, selectedPoint)-->
-                <div class="mx-auto py-3" hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap="message">
+                <div class="mx-auto py-3" hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap={ string(types.SSETypeRoomUpdate) }>
                     @RoomVotes(room)
                     init
                 </div>
