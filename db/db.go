@@ -1,17 +1,48 @@
 package db
 
-import "time"
+import (
+	"sort"
+	"sync"
+	"time"
+)
 
-// TODO lock this shit down
-type voteDB map[RoomId]Room
+type VoteDB struct {
+	db    map[RoomId]Room
+	mutex *sync.RWMutex
+}
 
 type Room struct {
 	VotesVisible bool
-	SessionUserMap
-	lastUpdated time.Time
+	sessionUserMap
+	lastUsed time.Time
 }
 
-type SessionUserMap map[SessionId]User
+func (r Room) Users() []User {
+	// good enough
+	keys := make([]string, 0, len(r.sessionUserMap))
+	users := make([]User, 0, len(sessionUserMap{}))
+	for k := range r.sessionUserMap {
+		keys = append(keys, string(k))
+	}
+
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		users = append(users, r.sessionUserMap[SessionId(k)])
+	}
+
+	return users
+}
+
+func NewRoom(votes bool, lastUsed time.Time) Room {
+	return Room{
+		VotesVisible:   votes,
+		sessionUserMap: make(map[SessionId]User),
+		lastUsed:       lastUsed,
+	}
+}
+
+type sessionUserMap map[SessionId]User
 
 type User struct {
 	Name string
@@ -21,106 +52,96 @@ type User struct {
 type RoomId string
 type SessionId string
 
-var VoteStore voteDB
+var VoteStore VoteDB
 
 func init() {
-	VoteStore = make(voteDB)
+	VoteStore = VoteDB{
+		db:    make(map[RoomId]Room),
+		mutex: &sync.RWMutex{},
+	}
 }
 
-func (db voteDB) GetRoom(room RoomId, checkStale bool) Room {
-	// this kinda sucks, I need a cleaner way to do nil/empty checks for this. But the bigger problem is using this nested map I guess
-	if db == nil {
+func (vdb VoteDB) GetRoom(room RoomId) Room {
+	vdb.mutex.Lock()
+	defer vdb.mutex.Unlock()
+
+	if r, exists := vdb.db[room]; !exists {
 		return Room{}
-	} else if r, exists := db[room]; !exists {
-		return Room{}
-	} else {
-		cutoff := time.Now().Add(-24 * time.Hour)
-		if r.lastUpdated.Before(cutoff) {
-			db[room] = Room{}
-		}
+	} else if r.lastUsed.Before(time.Now().Add(-1 * time.Hour)) {
+		vdb.db[room] = NewRoom(false, time.Now())
 	}
-	r := db[room]
-	r.lastUpdated = time.Now()
-	db[room] = r
+
+	r := vdb.db[room]
+	r.lastUsed = time.Now()
+	vdb.db[room] = r
 	return r
 }
 
-func (db voteDB) GetVoteBySession(room RoomId, sessId SessionId) string {
-	if db == nil {
-		return ""
-	} else if _, exists := db[room]; !exists {
+func (vdb VoteDB) GetVoteBySession(room RoomId, sessId SessionId) string {
+	vdb.mutex.RLock()
+	defer vdb.mutex.RUnlock()
+
+	if _, exists := vdb.db[room]; !exists {
 		return ""
 	} else {
-		return db[room].SessionUserMap[sessId].Vote
+		return vdb.db[room].sessionUserMap[sessId].Vote
 	}
 }
 
-func (db voteDB) ClearRoomVotes(room RoomId) {
-	if db == nil {
+func (vdb VoteDB) ClearRoomVotes(room RoomId) {
+	vdb.mutex.Lock()
+	defer vdb.mutex.Unlock()
+
+	if _, exists := vdb.db[room]; !exists {
 		return
 	}
-	if _, exists := db[room]; !exists {
-		return
-	}
-	sessVotes := db[room].SessionUserMap
+	sessVotes := vdb.db[room].sessionUserMap
 	for sessId, _ := range sessVotes {
 		s := sessVotes[sessId]
 		s.Vote = ""
 		sessVotes[sessId] = s
 	}
-	r := db[room]
-	r.SessionUserMap = sessVotes
-	db[room] = r
+	r := vdb.db[room]
+	r.sessionUserMap = sessVotes
+	vdb.db[room] = r
 }
 
-func (db voteDB) SetRoomVoteVisibility(room RoomId, show bool) {
-	if db == nil {
-		db = make(voteDB)
-	}
-	if _, exists := db[room]; !exists {
-		db[room] = Room{
-			VotesVisible:   show,
-			SessionUserMap: make(map[SessionId]User),
-			lastUpdated:    time.Now(),
-		}
+func (vdb VoteDB) SetRoomVoteVisibility(room RoomId, show bool) {
+	vdb.mutex.Lock()
+	defer vdb.mutex.Unlock()
+
+	if _, exists := vdb.db[room]; !exists {
+		vdb.db[room] = NewRoom(show, time.Now())
 		return
 	}
-	r := db[room]
+	r := vdb.db[room]
 	r.VotesVisible = show
-	db[room] = r
+	vdb.db[room] = r
 }
 
-func (db voteDB) SetVoteBySession(room RoomId, sessId SessionId, vote string) {
-	if db == nil {
-		db = make(voteDB)
+func (vdb VoteDB) SetVoteBySession(room RoomId, sessId SessionId, vote string) {
+	vdb.mutex.Lock()
+	defer vdb.mutex.Unlock()
+
+	if _, exists := vdb.db[room]; !exists {
+		vdb.db[room] = NewRoom(false, time.Now())
 	}
-	if _, exists := db[room]; !exists {
-		db[room] = Room{
-			VotesVisible:   false,
-			SessionUserMap: make(map[SessionId]User),
-			lastUpdated:    time.Now(),
-		}
-	}
-	user := db[room].SessionUserMap[sessId]
+	user := vdb.db[room].sessionUserMap[sessId]
 	user.Vote = vote
 
-	db[room].SessionUserMap[sessId] = user
+	vdb.db[room].sessionUserMap[sessId] = user
 }
 
 // TODO I need to combine this and setVote, too much overlap
-func (db voteDB) SetUsernameBySession(room RoomId, sessId SessionId, name string) {
-	if db == nil {
-		db = make(voteDB)
+func (vdb VoteDB) SetUsernameBySession(room RoomId, sessId SessionId, name string) {
+	vdb.mutex.Lock()
+	defer vdb.mutex.Unlock()
+
+	if _, exists := vdb.db[room]; !exists {
+		vdb.db[room] = NewRoom(false, time.Now())
 	}
-	if _, exists := db[room]; !exists {
-		db[room] = Room{
-			VotesVisible:   false,
-			SessionUserMap: make(map[SessionId]User),
-			lastUpdated:    time.Now(),
-		}
-	}
-	user := db[room].SessionUserMap[sessId]
+	user := vdb.db[room].sessionUserMap[sessId]
 	user.Name = name
 
-	db[room].SessionUserMap[sessId] = user
+	vdb.db[room].sessionUserMap[sessId] = user
 }

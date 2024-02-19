@@ -79,7 +79,7 @@ templ RoomVotes(room db.Room) {
             </tr>
         </thead>
         <tbody>
-    for _, user := range room.SessionUserMap {
+    for _, user := range room.Users() {
             <tr>
                 <td>{ user.Name }</td>
                 if room.VotesVisible {
