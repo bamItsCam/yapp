@@ -1,0 +1,7 @@
+services:
+  yapp:
+    image: bamitscam/yapp:latest
+    restart: unless-stopped
+    container_name: yapp
+    ports:
+      - 3000:3000/tcp

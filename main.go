@@ -53,6 +53,8 @@ func main() {
 			return
 		}()
 
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.Header().Set("Cache-Control", "no-cache")
 		eventServer.ServeHTTP(w, r)
 	})
 
