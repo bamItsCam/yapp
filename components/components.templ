@@ -120,7 +120,6 @@ templ Room(currentVote string, room db.Room) {
                 </div>
                 <div class="mx-auto py-3" hx-ext="sse" sse-connect={ fmt.Sprintf("/events?stream=%s", ctx.Value("room").(string)) } sse-swap={ string(types.SSETypeRoomUpdate) }>
                     @RoomVotes(room)
-                    init
                 </div>
             </div>
         </body>
