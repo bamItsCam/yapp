@@ -1,6 +1,6 @@
 ![templ](https://github.com/a-h/templ/raw/main/templ.png)
 
-## A HTML templating language for Go that has great developer tooling.
+## An HTML templating language for Go that has great developer tooling.
 
 ![templ](ide-demo.gif)
 
@@ -13,7 +13,7 @@ See user documentation at https://templ.guide
 <a href="https://pkg.go.dev/github.com/a-h/templ"><img src="https://pkg.go.dev/badge/github.com/a-h/templ.svg" alt="Go Reference" /></a>
 <a href="https://xcfile.dev"><img src="https://xcfile.dev/badge.svg" alt="xc compatible" /></a>
 <a href="https://raw.githack.com/wiki/a-h/templ/coverage.html"><img src="https://github.com/a-h/templ/wiki/coverage.svg" alt="Go Coverage" /></a>
-<a href="https://goreportcard.com/report/github.com/a-h/templ"><img src="https://goreportcard.com/badge/github.com/a-h/templ" alt="Go Report Card" /></a<
+<a href="https://goreportcard.com/report/github.com/a-h/templ"><img src="https://goreportcard.com/badge/github.com/a-h/templ" alt="Go Report Card" /></a>
 </p>
 
 ## Tasks
@@ -70,6 +70,16 @@ go run ./cmd/templ generate -include-version=false
 go test ./...
 ```
 
+### test-short
+
+Run Go tests.
+
+```sh
+go run ./get-version > .version
+go run ./cmd/templ generate -include-version=false
+go test ./... -short
+```
+
 ### test-cover
 
 Run Go tests.
@@ -87,13 +97,26 @@ GOCOVERDIR=coverage/fmt ./coverage/templ-cover fmt .
 GOCOVERDIR=coverage/generate ./coverage/templ-cover generate -include-version=false
 GOCOVERDIR=coverage/version ./coverage/templ-cover version
 # Run the unit tests.
-go test -cover ./... -args -test.gocoverdir="$PWD/coverage/unit"
+go test -cover ./... -coverpkg ./... -args -test.gocoverdir="$PWD/coverage/unit"
 # Display the combined percentage.
 go tool covdata percent -i=./coverage/fmt,./coverage/generate,./coverage/version,./coverage/unit
 # Generate a text coverage profile for tooling to use.
 go tool covdata textfmt -i=./coverage/fmt,./coverage/generate,./coverage/version,./coverage/unit -o coverage.out
 # Print total
 go tool cover -func coverage.out | grep total
+```
+
+### test-cover-watch
+
+```sh
+gotestsum --watch -- -coverprofile=coverage.out
+```
+
+### test-fuzz
+
+```sh
+./parser/v2/fuzz.sh
+./parser/v2/goexpression/fuzz.sh
 ```
 
 ### benchmark
@@ -115,18 +138,28 @@ go run ./cmd/templ fmt .
 
 ### lint
 
+Run the lint operations that are run as part of the CI.
+
 ```sh
 golangci-lint run --verbose
 ```
 
-### release
+### ensure-generated
 
-Create production build with goreleaser.
+Ensure that templ files have been generated with the local version of templ, and that those files have been added to git.
+
+Requires: generate
 
 ```sh
-if [ "${GITHUB_TOKEN}" == "" ]; then echo "No github token, run:"; echo "export GITHUB_TOKEN=`pass github.com/goreleaser_access_token`"; exit 1; fi
+git diff --exit-code
+```
+
+### push-release-tag
+
+Push a semantic version number to Github to trigger the release process.
+
+```sh
 ./push-tag.sh
-goreleaser --clean
 ```
 
 ### docs-run

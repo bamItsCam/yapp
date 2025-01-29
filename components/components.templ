@@ -48,6 +48,9 @@ templ VoteForm(currentVote string) {
 }
 
 templ RoomVotes(room db.Room) {
+    if ok, show := ctx.Value("show").(bool); room.Consensus() && ok && show {
+        <script>clickConfetti()</script>
+    }
     <div class="field is-grouped is-grouped-centered">
         <div class="buttons field has-addons">
             <button hx-post={ fmt.Sprintf("/%s/show", ctx.Value("room").(string)) }
@@ -104,16 +107,13 @@ templ Room(currentVote string, room db.Room) {
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
     <link href=" https://cdn.jsdelivr.net/npm/@creativebulma/bulma-divider@1.1.0/dist/bulma-divider.min.css" rel="stylesheet"/>
-
-    <!--<script src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>-->
+    <script src="https://unpkg.com/js-confetti@0.12.0"></script>
     <html>
         <head>
             <title>Pointing Room { ctx.Value("room").(string) }</title>
         </head>
         <body>
-
             <div class="container">
-
                 <h1 class="title is-3 has-text-centered my-2">Pointing Room { ctx.Value("room").(string) }</h1>
                 <div class="mx-auto py-3" id="username">
                     @UsernameForm()
@@ -122,6 +122,13 @@ templ Room(currentVote string, room db.Room) {
                     @RoomVotes(room)
                 </div>
             </div>
+            <script>
+                const jsc = new jsConfetti();
+
+                function clickConfetti() {
+                    jsc.addConfetti({ confettiRadius: 6, confettiNumber: 500 });
+                }
+            </script>
         </body>
     </html>
 }
@@ -132,7 +139,6 @@ templ Index() {
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
     <link href=" https://cdn.jsdelivr.net/npm/@creativebulma/bulma-divider@1.1.0/dist/bulma-divider.min.css" rel="stylesheet"/>
-    <!--<script src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>-->
     <html>
         <head>
             <title>Yet Another Pointing Poker</title>

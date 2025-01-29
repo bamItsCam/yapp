@@ -34,6 +34,25 @@ func (r Room) Users() []User {
 	return users
 }
 
+func (r Room) Consensus() bool {
+	users := r.Users()
+	if len(users) < 2 {
+		return false
+	}
+
+	firstVote := users[0].Vote
+	equalVotes := firstVote != ""
+	for i := 1; i < len(users); i++ {
+		vote := users[i].Vote
+		if vote == "" || vote != firstVote {
+			equalVotes = false
+			break
+		}
+	}
+
+	return r.VotesVisible && equalVotes
+}
+
 func NewRoom(votes bool, lastUsed time.Time) Room {
 	return Room{
 		VotesVisible:   votes,
