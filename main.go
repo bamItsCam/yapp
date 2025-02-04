@@ -160,6 +160,7 @@ func setUser(w http.ResponseWriter, r *http.Request) {
 func showVotes(w http.ResponseWriter, r *http.Request) {
 	room := chi.URLParam(r, "room")
 	ctx := context.WithValue(r.Context(), "room", room)
+	ctx = context.WithValue(ctx, "show", true)
 
 	db.VoteStore.SetRoomVoteVisibility(db.RoomId(room), true)
 	publishVoteTableUpdateMsg(ctx, db.RoomId(room))

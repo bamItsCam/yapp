@@ -23,3 +23,12 @@ result
 # Editors
 ## nvim
 .null-ls*
+
+# Go workspace.
+go.work
+
+# direnv
+.direnv
+
+# templ txt files.
+*_templ.txt
